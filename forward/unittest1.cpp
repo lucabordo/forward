@@ -23,7 +23,7 @@ namespace forward
 			auto next = enumerator.next();
 			if (!has_more(next))
 				break;
-			result.push_back(get_value(next));
+			result.push_back(peek_value(next));
 		}
 
 		return result;
@@ -78,8 +78,6 @@ namespace forward
 			using namespace forward;
 			std::vector<std::string> v{ "cat", "bunny", "doggy", "horsey" };
 
-			auto lambda = [](int x) {return x + 1; };
-
 			auto result =
 				from(v)
 				>> where([](const std::string& s) { return s[0] < 'h'; })
@@ -92,8 +90,32 @@ namespace forward
 			assert(result[2] == 5);
 		}
 
-		// Interating counter-examples
-		// from(std::vector<int>{1,2,3})
-		// >> select([](int i){return std::make_unique<int>(i); })
+		TEST_METHOD(UniquePointers)
+		{
+			using namespace forward;
+			std::vector<int> v{ 1, 2, 3, 4, 5 };
+
+			auto result =
+				from(v)
+				>> select([](int i) {return std::make_unique<int>(i); })
+				>> to_vector<std::unique_ptr<int>>();
+
+			assert(result.size() == 5);
+			for (int i = 0; i < v.size(); ++i)
+				assert(v[i] == *result[i]);
+		}
+
+		TEST_METHOD(Pair)
+		{
+			using namespace forward;
+			std::vector<std::string> v{ "cat", "bunny", "doggy", "horsey" };
+
+			auto result = to_vector(
+				from(v)
+				>> select([](std::string& s) { return std::make_tuple(std::move(s), s.size()); }));
+
+			// We should have a single copy, but the initial collection always intact
+			assert(v[0] == "cat");
+		}
 	};
 }

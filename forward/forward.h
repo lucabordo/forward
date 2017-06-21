@@ -7,6 +7,8 @@
 
 namespace forward
 {
+	#pragma region Nullable objects, represented by a tuple<bool, T>
+
 	template <typename T>
 	bool has_more(const T& current)
 	{
@@ -14,9 +16,15 @@ namespace forward
 	}
 
 	template <typename T>
-	auto get_value(T& current)
+	const auto& peek_value(const T& current)
 	{
 		return std::get<1>(current);
+	}
+
+	template <typename T>
+	auto move_value(T& current)
+	{
+		return std::move(std::get<1>(current));
 	}
 
 	template <typename ReturnType>
@@ -32,23 +40,27 @@ namespace forward
 		return std::make_tuple(true, std::move(current));
 	}
 
+	#pragma endregion
 
 	#pragma region Enumerators
 
 	// Enumerators are conceptually as follows. 
 	// Enumerators are moved within more complex enumerators. They should be lightweight objects.
+	// 
 	/*
-  	class AbstractEnumerator
-	{
-	public:
 
-		// Calculate the next value, paired with a Boolean saying whether it is well-defined
-		nullable<int> next();
+	template <typename Return_type> // Not the actual paramaterization. ReturnType needs to be default constructible
+  	struct AbstractEnumerator
+	{
+		// Returns (true, next calculated value),
+		// Or, if no next value exists: (false, default_coonstructor())
+		std::tuple<bool, Return_type> next();
 	};
+	
 	*/
 
 
-	// An enumerator based on a forward-iteratable container, STL-styler
+	// An enumerator based on a pair of STL-style iterators.
 	// Implements:
 	//
 	// for (auto it = begin(); it != end(); ++it)
@@ -67,8 +79,6 @@ namespace forward
 		{
 		}
 
-		// If you need the type of this function:
-		// std::remove_reference<decltype(std::get<1>(next()))>::type
 		auto next()
 		{
 			if (_current == _end)
@@ -90,7 +100,7 @@ namespace forward
 	};
 
 
-	// An enumerator that applies a function to all elements of an underlying enumerator.
+	// An enumerator that applies a tranform to all elements of an underlying enumerator.
 	// The function is assumed to be stateless, deterministic, and is only const-referred to.
 	// Implements:
 	//
@@ -99,30 +109,31 @@ namespace forward
 	//        yield return map(en.get_value());
 	//    }
 	//
-	template <typename Enumerator, typename Map>
+	template <typename Enumerator, typename Transform>
 	class SelectEnumerator
 	{
 	public:
 
-		SelectEnumerator(Enumerator enumerator, const Map& map) :
+		SelectEnumerator(Enumerator enumerator, const Transform& transform) :
 			_enumerator(std::move(enumerator)),
-			_map(map)
+			_transform(transform)
 		{
 		}
 
 		auto next()
 		{
 			auto underlying = _enumerator.next();
+			using T = decltype(_transform(move_value(underlying)));
 
 			return has_more(underlying)
-				? yield_return(_map(get_value(underlying)))
-				: yield_break<decltype(_map(get_value(underlying)))>();
+				? yield_return(_transform(move_value(underlying)))
+				: yield_break<T>();
 		}
 
 	private:
 
 		Enumerator _enumerator;
-		const Map& _map;
+		const Transform& _transform;
 	};
 
 
@@ -156,17 +167,13 @@ namespace forward
 			for (;;)
 			{
 				auto current = _enumerator.next();
-				using T = decltype(get_value(current));
+				using T = decltype(move_value(current));
 
 				if (!has_more(current))
-				{
 					return yield_break<T>();
-				}
 
-				if (_filter(get_value(current)))
-				{
-					return yield_return(get_value(current));
-				}
+				if (_filter(peek_value(current)))
+					return yield_return(move_value(current));
 			}
 		}
 
@@ -182,7 +189,8 @@ namespace forward
 
 	// Conceptually, enumerables are:
 	/*
-	class Enumerable 
+
+	struct Enumerable 
 	{
 		static const bool is_enumerable = true;
 		using enumerator = AbstractEnumerator;
@@ -190,6 +198,7 @@ namespace forward
 		// Produce an enumerator over this content
 		enumerator get_enumerator() const;
 	};
+	
 	*/
 
 
@@ -245,33 +254,34 @@ namespace forward
 	};
 
 
-	template <typename Enumerable, typename Map>
+	template <typename Enumerable, typename Transform>
 	class SelectEnumerable
 	{
 	public:
 
 		static const bool is_enumerable = true;
-		using enumerator = SelectEnumerator<typename Enumerable::enumerator, Map>;
+		using enumerator = SelectEnumerator<typename Enumerable::enumerator, Transform>;
 
-		SelectEnumerable(const Enumerable& enumerable, const Map& filter) :
+		SelectEnumerable(const Enumerable& enumerable, const Transform& filter) :
 			_enumerable(enumerable),
-			_map(std::move(filter))
+			_transform(std::move(filter))
 		{
 		}
 
 		enumerator get_enumerator() const
 		{
-			return enumerator(_enumerable.get_enumerator(), _map);
+			return enumerator(_enumerable.get_enumerator(), _transform);
 		}
 
 	private:
 
 		const Enumerable& _enumerable;
-		const Map& _map;
+		const Transform& _transform;
 	};
 
 	#pragma endregion
 
+	#pragma region Syntax for from... where... select
 
 	template <typename Iteratable>
 	EnumerableFromIteratableRef<Iteratable> from(const Iteratable& iteratable)
@@ -310,35 +320,55 @@ namespace forward
 
 
 	// Allow right hand side composition for select
-	template <typename Map>
+	template <typename Transform>
 	class SelectRightHandSide
 	{
 	private:
-		const Map& _map;
+		const Transform& _map;
 	public:
-		SelectRightHandSide(const Map& map) : _map(map) {}
+		SelectRightHandSide(const Transform& map) : _map(map) {}
 
 		template <typename Enumerable>
-		SelectEnumerable<Enumerable, Map> apply(const Enumerable& enumerable) const
+		SelectEnumerable<Enumerable, Transform> apply(const Enumerable& enumerable) const
 		{
-			return SelectEnumerable<Enumerable, Map>(enumerable, _map);
+			return SelectEnumerable<Enumerable, Transform>(enumerable, _map);
 		}
 	};
 
-	template <typename Map>
-	SelectRightHandSide<Map> select(const Map& map)
+	template <typename Transform>
+	SelectRightHandSide<Transform> select(const Transform& map)
 	{
-		return SelectRightHandSide<Map>(map);
+		return SelectRightHandSide<Transform>(map);
 	}
 
-	template <typename Enumerable, typename Map>
-	SelectEnumerable<Enumerable, Map> operator >> (const Enumerable& enumerable, const SelectRightHandSide<Map>& selectRightHandSide)
+	template <typename Enumerable, typename Transform>
+	SelectEnumerable<Enumerable, Transform> operator >> (const Enumerable& enumerable, const SelectRightHandSide<Transform>& selectRightHandSide)
 	{
 		return selectRightHandSide.apply(enumerable);
 	}
 
+	#pragma endregion
 
-	// Some end point functions that do not produce an Enumerable
+	#pragma region Accumulator functions
+
+	template <typename Enumerable>
+	auto to_vector(const Enumerable& enumerable)
+	{
+		static_assert(Enumerable::is_enumerable, "Oops.");
+		auto enumerator = enumerable.get_enumerator();
+		using T = std::remove_reference<decltype(std::get<1>(enumerator.next()))>::type;
+		std::vector<T> result;
+
+		for (;;)
+		{
+			auto next = enumerator.next();
+			if (!has_more(next))
+				break;
+			result.push_back(move_value(next));
+		}
+
+		return result;
+	}
 
 	template <typename T>
 	class ToVector
@@ -348,16 +378,7 @@ namespace forward
 		template <typename Enumerable>
 		std::vector<T> apply(const Enumerable& enumerable) const
 		{
-			static_assert(Enumerable::is_enumerable, "Oops.");
-			std::vector<T> result;
-			for (auto enumerator = enumerable.get_enumerator();;)
-			{
-				auto next = enumerator.next();
-				if (!has_more(next))
-					break;
-				result.push_back(get_value(next));
-			}
-			return result;
+			return to_vector(enumerable);
 		}
 	};
 
@@ -373,5 +394,21 @@ namespace forward
 	{
 		return ToVector<T>();
 	}
-}
 
+	#pragma endregion
+
+    // TODO
+	// range 
+	// take, skip, 
+	// single,
+	// is_empty, 
+	// sum_from, count
+	// zip, unzip? 
+
+	// revert
+
+	// with additional includes
+	// orderby
+	// distinct
+	// shuffle
+}
