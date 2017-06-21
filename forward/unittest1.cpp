@@ -10,25 +10,6 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace forward
 {		
-	template <typename Enumerable>
-	auto convert_to_vector(const Enumerable& enumerable)
-	{
-		using namespace forward;
-		auto enumerator = enumerable.get_enumerator();
-		using T = std::remove_reference<decltype(std::get<1>(enumerator.next()))>::type;
-		std::vector<T> result;
-
-		for (;;)
-		{
-			auto next = enumerator.next();
-			if (!has_more(next))
-				break;
-			result.push_back(peek_value(next));
-		}
-
-		return result;
-	}
-
 	TEST_CLASS(UnitTest1)
 	{
 	public:
@@ -38,7 +19,7 @@ namespace forward
 			using namespace forward;
 			auto vec = std::vector<int>{ 1, 2, 3, 4 };
 			auto list = from(vec);
-			std::vector<int> converted = convert_to_vector(list);
+			std::vector<int> converted = forward::to_vector(list);
 
 			assert(converted.size() == 4);
 			assert(converted[0] == 1);
