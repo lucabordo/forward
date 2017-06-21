@@ -7,6 +7,32 @@
 
 namespace forward
 {
+	template <typename T>
+	bool has_more(const T& current)
+	{
+		return std::get<0>(current);
+	}
+
+	template <typename T>
+	auto get_value(T& current)
+	{
+		return std::get<1>(current);
+	}
+
+	template <typename ReturnType>
+	auto yield_break()
+	{
+		using U = std::remove_reference<ReturnType>::type;
+		return std::make_tuple(false, U{});
+	}
+
+	template <typename ReturnType>
+	auto yield_return(ReturnType&& current)
+	{
+		return std::make_tuple(true, std::move(current));
+	}
+
+
 	#pragma region Enumerators
 
 	// Enumerators are conceptually as follows. 
@@ -16,18 +42,8 @@ namespace forward
 	{
 	public:
 
-		static const bool is_enumerator = true;
-		using value_type = int;
-		
-		// True if there is a current value.
-		bool has_value() const;
-
-		// Compute the current value.
-		// Calling this twice might cause the same calculation to be redone or, worse, access to a moved object.
-		value_type get_value() const;
-
-		// Move to the next value, if any. 
-		void forward();
+		// Calculate the next value, paired with a Boolean saying whether it is well-defined
+		nullable<int> next();
 	};
 	*/
 
@@ -45,30 +61,26 @@ namespace forward
 	{
 	public:
 
-		static const bool is_enumerator = true;
-		using value_type = typename Iterator::value_type;
-
 		EnumeratorFromIterator(Iterator begin, Iterator end) :
 			_current(std::move(begin)),
 			_end(std::move(end))
 		{
 		}
 
-		bool has_value() const
+		// If you need the type of this function:
+		// std::remove_reference<decltype(std::get<1>(next()))>::type
+		auto next()
 		{
-			return _current != _end;
-		}
-
-		value_type get_value() const
-		{
-			assert(has_value());
-			return *_current;
-		}
-
-		void forward()
-		{
-			assert(has_value());
-			++_current;
+			if (_current == _end)
+			{
+				return yield_break<decltype(*_current)>();
+			}
+			else
+			{
+				auto result = yield_return(*_current);
+				++_current;
+				return std::move(result);
+			}
 		}
 
 	private:
@@ -92,30 +104,19 @@ namespace forward
 	{
 	public:
 
-		static const bool is_enumerator = true;
-		using value_type = typename Enumerator::value_type;
-
 		SelectEnumerator(Enumerator enumerator, const Map& map) :
 			_enumerator(std::move(enumerator)),
 			_map(map)
 		{
 		}
 
-		bool has_value() const
+		auto next()
 		{
-			return _enumerator.has_value();
-		}
+			auto underlying = _enumerator.next();
 
-		value_type get_value() const
-		{
-			assert(has_value());
-			return _map(_enumerator.get_value());
-		}
-
-		void forward()
-		{
-			assert(has_value());
-			_enumerator.forward();
+			return has_more(underlying)
+				? yield_return(_map(get_value(underlying)))
+				: yield_break<decltype(_map(get_value(underlying)))>();
 		}
 
 	private:
@@ -143,56 +144,33 @@ namespace forward
 	public:
 
 		static const bool is_enumerator = true;
-		using value_type = typename Enumerator::value_type;
 
 		WhereEnumerator(Enumerator enumerator, const Filter& filter) :
 			_enumerator(std::move(enumerator)),
-			_filter(filter),
-			_valid(true)
+			_filter(filter)
 		{
-			seek();
 		}
 
-		bool has_value() const
+		auto next()
 		{
-			return _valid;
-		}
-
-		value_type get_value() const
-		{
-			assert(has_value());
-			return std::move(_current);
-		}
-
-		void forward()
-		{
-			assert(has_value());
-			_enumerator.forward();
-			seek();
-		}
-
-	private:
-
-		// Move until either end or position that passes the filter
-		void seek()
-		{
-			assert(_valid);
-
-			for (; _enumerator.has_value(); _enumerator.forward())
+			for (;;)
 			{
-				_current = _enumerator.get_value();
-				if (_filter(_current))
-					return;
-			}
+				auto current = _enumerator.next();
+				using T = decltype(get_value(current));
 
-			_valid = false;
+				if (!has_more(current))
+				{
+					return yield_break<T>();
+				}
+
+				if (_filter(get_value(current)))
+				{
+					return yield_return(get_value(current));
+				}
+			}
 		}
 
-
 	private:
-
-		value_type _current;
-		bool _valid;
 
 		Enumerator _enumerator;
 		const Filter& _filter;
@@ -207,7 +185,6 @@ namespace forward
 	class Enumerable 
 	{
 		static const bool is_enumerable = true;
-		using value_type = int;
 		using enumerator = AbstractEnumerator;
 
 		// Produce an enumerator over this content
@@ -223,7 +200,6 @@ namespace forward
 
 		static const bool is_enumerable = true;
 		using iterator = typename Iteratable::const_iterator;
-		using value_type = typename iterator::value_type;
 		using enumerator = EnumeratorFromIterator<iterator>;
 
 		EnumerableFromIteratableRef(const Iteratable& iteratable) :
@@ -249,7 +225,6 @@ namespace forward
 	public:
 
 		static const bool is_enumerable = true;
-		using value_type = typename Enumerable::value_type;
 		using enumerator = WhereEnumerator<typename Enumerable::enumerator, Filter>;
 
 		WhereEnumerable(const Enumerable& enumerable, const Filter& filter) :
@@ -276,9 +251,6 @@ namespace forward
 	public:
 
 		static const bool is_enumerable = true;
-		using value_type = typename Map::result_type;
-//		using value_type = decltype();
-//			typename Enumerable::value_type;
 		using enumerator = SelectEnumerator<typename Enumerable::enumerator, Map>;
 
 		SelectEnumerable(const Enumerable& enumerable, const Map& filter) :
@@ -374,19 +346,24 @@ namespace forward
 	public:
 
 		template <typename Enumerable>
-		std::vector<typename Enumerable::value_type> apply(const Enumerable& enumerable) const
+		std::vector<T> apply(const Enumerable& enumerable) const
 		{
 			static_assert(Enumerable::is_enumerable, "Oops.");
-			std::vector<typename Enumerable::value_type> result;
-			for (auto enumerator = enumerable.get_enumerator(); enumerator.has_value(); enumerator.forward())
-				result.push_back(enumerator.get_value());
+			std::vector<T> result;
+			for (auto enumerator = enumerable.get_enumerator();;)
+			{
+				auto next = enumerator.next();
+				if (!has_more(next))
+					break;
+				result.push_back(get_value(next));
+			}
 			return result;
 		}
 	};
 
 
 	template <typename Enumerable, typename T>
-	std::vector<typename Enumerable::value_type> operator >> (const Enumerable& enumerable, const ToVector<T>& fold)
+	std::vector<T> operator >> (const Enumerable& enumerable, const ToVector<T>& fold)
 	{
 		return fold.apply(enumerable);
 	}
