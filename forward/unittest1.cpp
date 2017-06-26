@@ -19,7 +19,7 @@ namespace forward
 			using namespace forward;
 			auto vec = std::vector<int>{ 1, 2, 3, 4 };
 			auto list = from(vec);
-			std::vector<int> converted = forward::to_vector(list);
+			std::vector<int> converted = to_vector(list);
 
 			assert(converted.size() == 4);
 			assert(converted[0] == 1);
