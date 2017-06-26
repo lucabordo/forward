@@ -356,15 +356,18 @@ namespace forward
 	{
 		static_assert(Enumerable::is_enumerable, "Oops.");
 		auto enumerator = enumerable.get_enumerator();
-		using T = std::remove_reference<decltype(std::get<1>(enumerator.next()))>::type;
-		std::vector<T> result;
+
+		using actual_type = decltype(std::get<1>(enumerator.next()));
+		using stored_type = std::remove_reference<actual_type>::type;
+		
+		std::vector<stored_type> result;
 
 		for (;;)
 		{
 			auto next = enumerator.next();
 			if (!has_more(next))
 				break;
-			result.push_back(move_value(next));
+			result.push_back(std::get<1>(next));
 		}
 
 		return result;
