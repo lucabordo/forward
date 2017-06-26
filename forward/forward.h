@@ -30,14 +30,14 @@ namespace forward
 	template <typename ReturnType>
 	auto yield_break()
 	{
-		using U = std::remove_reference<ReturnType>::type;
-		return std::make_tuple(false, U{});
+//		using U = std::remove_reference<ReturnType>::type;
+		return std::make_tuple(false, ReturnType{});
 	}
 
 	template <typename ReturnType>
 	auto yield_return(ReturnType&& current)
 	{
-		return std::make_tuple(true, std::move(current));
+		return std::make_tuple(true, std::forward(current));
 	}
 
 	#pragma endregion
@@ -81,15 +81,18 @@ namespace forward
 
 		auto next()
 		{
+			using actual_type = decltype(*_current);
+			using stored_type = std::remove_reference<actual_type>::type;
+
 			if (_current == _end)
 			{
-				return yield_break<decltype(*_current)>();
+				return std::make_tuple(false, actual_type{});
 			}
 			else
 			{
-				auto result = yield_return(*_current);
+				auto&& result = *_current;
 				++_current;
-				return std::move(result);
+				return std::make_tuple(true, std::forward<actual_type>(result));
 			}
 		}
 
@@ -122,12 +125,12 @@ namespace forward
 
 		auto next()
 		{
-			auto underlying = _enumerator.next();
-			using T = decltype(_transform(move_value(underlying)));
+			auto&& underlying = _enumerator.next();
+			using result_type = decltype(_transform(std::get<1>(underlying)));
 
 			return has_more(underlying)
-				? yield_return(_transform(move_value(underlying)))
-				: yield_break<T>();
+				? std::make_tuple(true, _transform(std::get<1>(underlying)))
+				: yield_break<result_type>();
 		}
 
 	private:
@@ -164,16 +167,18 @@ namespace forward
 
 		auto next()
 		{
+			using actual_type = decltype(std::get<1>(_enumerator.next()));
+			using stored_type = std::remove_reference<actual_type>::type;
+
 			for (;;)
 			{
-				auto current = _enumerator.next();
-				using T = decltype(move_value(current));
+				auto&& current = _enumerator.next();
 
 				if (!has_more(current))
-					return yield_break<T>();
+					return yield_break<actual_type>();
 
 				if (_filter(peek_value(current)))
-					return yield_return(move_value(current));
+					return std::make_tuple(true, std::forward<actual_type>(std::get<1>(current)));
 			}
 		}
 
