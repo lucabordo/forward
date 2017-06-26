@@ -16,28 +16,21 @@ namespace forward
 	}
 
 	template <typename T>
-	const auto& peek_value(const T& current)
+	auto get_value(const T& current)
 	{
 		return std::get<1>(current);
-	}
-
-	template <typename T>
-	auto move_value(T& current)
-	{
-		return std::move(std::get<1>(current));
 	}
 
 	template <typename ReturnType>
 	auto yield_break()
 	{
-//		using U = std::remove_reference<ReturnType>::type;
 		return std::make_tuple(false, ReturnType{});
 	}
 
 	template <typename ReturnType>
 	auto yield_return(ReturnType&& current)
 	{
-		return std::make_tuple(true, std::forward(current));
+		return std::make_tuple(true, std::forward<ReturnType>(current));
 	}
 
 	#pragma endregion
@@ -86,13 +79,13 @@ namespace forward
 
 			if (_current == _end)
 			{
-				return std::make_tuple(false, actual_type{});
+				return yield_break<actual_type>();
 			}
 			else
 			{
 				auto&& result = *_current;
 				++_current;
-				return std::make_tuple(true, std::forward<actual_type>(result));
+				return yield_return(std::forward<actual_type>(result));
 			}
 		}
 
@@ -129,7 +122,7 @@ namespace forward
 			using result_type = decltype(_transform(std::get<1>(underlying)));
 
 			return has_more(underlying)
-				? std::make_tuple(true, _transform(std::get<1>(underlying)))
+				? yield_return(_transform(std::get<1>(underlying)))
 				: yield_break<result_type>();
 		}
 
@@ -168,7 +161,6 @@ namespace forward
 		auto next()
 		{
 			using actual_type = decltype(std::get<1>(_enumerator.next()));
-			using stored_type = std::remove_reference<actual_type>::type;
 
 			for (;;)
 			{
@@ -177,8 +169,8 @@ namespace forward
 				if (!has_more(current))
 					return yield_break<actual_type>();
 
-				if (_filter(peek_value(current)))
-					return std::make_tuple(true, std::forward<actual_type>(std::get<1>(current)));
+				if (_filter(get_value(current)))
+					return yield_return<>(std::forward<actual_type>(get_value(current)));
 			}
 		}
 
