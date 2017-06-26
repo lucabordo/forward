@@ -364,10 +364,10 @@ namespace forward
 
 		for (;;)
 		{
-			auto next = enumerator.next();
+			auto&& next = enumerator.next();
 			if (!has_more(next))
 				break;
-			result.push_back(std::get<1>(next));
+			result.push_back(std::forward<actual_type>(std::get<1>(next)));
 		}
 
 		return result;
