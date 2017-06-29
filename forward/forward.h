@@ -59,6 +59,41 @@ namespace forward
 	*/
 
 
+	// An enumerator that returns elements by value within a range.
+	// Implements:
+	//
+	// for (Number i = start; i < lastExcluded; ++i)
+	// {
+	//     yield return i;
+	// } 
+	//
+	template <typename Number>
+	class RangeEnumerator
+	{
+	public:
+
+		static const bool is_enumerator = true;
+
+		RangeEnumerator(Number start, Number lastExcluded) :
+			_current(start),
+			_lastExcluded(lastExcluded)
+		{}
+
+		auto next()
+		{
+			if (_current == _lastExcluded)
+				return yield_break<Number>();
+			else
+				return yield_return<Number>(_current++);
+		}
+
+	private:
+
+		Number _current;
+		Number _lastExcluded;
+	};
+
+
 	// An enumerator based on a pair of STL-style iterators.
 	// Implements:
 	//
@@ -204,6 +239,30 @@ namespace forward
 	
 	*/
 
+	template <typename Number>
+	class RangeEnumerable
+	{
+	public:
+
+		static const bool is_enumerable = true;
+		using enumerator = RangeEnumerator<Number>;
+
+		RangeEnumerable(Number start, Number lastExcluded):
+			_current(start),
+			_lastExcluded(lastExcluded)
+		{}
+
+		enumerator get_enumerator() const
+		{
+			return enumerator(_current, _lastExcluded);
+		}
+
+	private:
+
+		Number _current;
+		Number _lastExcluded;
+	};
+
 
 	template <typename Iteratable>
 	class EnumerableFromIteratableRef
@@ -228,7 +287,6 @@ namespace forward
 
 		const Iteratable& _iteratable;
 	};
-
 
 
 	template <typename Enumerable, typename Filter>
@@ -292,6 +350,11 @@ namespace forward
 		return EnumerableFromIteratableRef<Iteratable>(iteratable);
 	}
 
+	template <typename Number>
+	RangeEnumerable<Number> range(Number start, Number endExclusive)
+	{
+		return RangeEnumerable<Number>(start, endExclusive);
+	}
 
 	// Allow right hand side composition for where
 	template <typename Filter>

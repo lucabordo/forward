@@ -27,6 +27,16 @@ namespace forward
 		}
 
 
+		TEST_METHOD(RangeBasic)
+		{
+			using namespace forward;
+			auto r = range(10, 34) >> to_vector<int>();
+
+			assert(r[0] == 10);
+			assert(r.back() == 33);
+		}
+
+
 		TEST_METHOD(SimpleWhere)
 		{
 			std::vector<int> v{ 15, 21 };
