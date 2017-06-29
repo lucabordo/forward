@@ -16,7 +16,13 @@ namespace forward
 	}
 
 	template <typename T>
-	auto get_value(const T& current)
+	auto get_value_by_ref(const T& current)
+	{
+		return std::get<1>(current);
+	}
+
+	template <typename T>
+	auto forward_value(T&& current)
 	{
 		return std::get<1>(current);
 	}
@@ -169,8 +175,8 @@ namespace forward
 				if (!has_more(current))
 					return yield_break<actual_type>();
 
-				if (_filter(get_value(current)))
-					return yield_return<>(std::forward<actual_type>(get_value(current)));
+				if (_filter(get_value_by_ref(current)))
+					return yield_return(forward_value(current));
 			}
 		}
 
