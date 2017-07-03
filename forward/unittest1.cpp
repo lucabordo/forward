@@ -147,7 +147,7 @@ namespace forward
         }
 
 
-        TEST_METHOD(TestToSet1)
+        TEST_METHOD(ToSet1)
         {
             using namespace forward;
             {
@@ -156,7 +156,6 @@ namespace forward
                 auto sizes = from(v)
                     >> select([](const auto& s) { return s.size(); })
                     >> to_set<size_t>();
-                auto copy = from(sizes) >> to_vector<size_t>();
 
                 assert(sizes.size() == 3);
             }
@@ -169,6 +168,28 @@ namespace forward
                     >> to_vector<size_t>();
 
                 assert(sizes.size() == 3);
+            }
+        }
+     
+        TEST_METHOD(OverBy1)
+        {
+            std::unordered_set<std::string> v{ "caterpillar", "bunny", "doggy", "horsey" };
+            {
+                auto sorted = to_vector_ordered_by(from(v), [](const auto& s) {return s.size(); });
+                assert(sorted.back() == "caterpillar");
+            }
+            {
+                auto sorted = 
+                    from(v)
+                    >> to_vector_ordered_by<std::string>([](const auto& s) {return s.size(); });
+                assert(sorted.back() == "caterpillar");
+            }
+            {
+                auto sorted =
+                    from(v)
+                    >> order_by<std::string>([](const auto& s) {return s.size(); })
+                    >> to_vector<std::string>();
+                assert(sorted.back() == "caterpillar");
             }
         }
     };
