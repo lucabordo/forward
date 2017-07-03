@@ -151,9 +151,9 @@ namespace forward
 	{
 	public:
 
-		SelectEnumerator(Enumerator enumerator, const Transform& transform) :
+		SelectEnumerator(Enumerator enumerator, Transform transform) :
 			_enumerator(std::move(enumerator)),
-			_transform(transform)
+			_transform(std::move(transform))
 		{
 		}
 
@@ -170,7 +170,7 @@ namespace forward
 	private:
 
 		Enumerator _enumerator;
-		const Transform& _transform;
+		Transform _transform;
 	};
 
 
@@ -193,9 +193,9 @@ namespace forward
 
 		static const bool is_enumerator = true;
 
-		WhereEnumerator(Enumerator enumerator, const Filter& filter) :
+		WhereEnumerator(Enumerator enumerator, Filter filter) :
 			_enumerator(std::move(enumerator)),
-			_filter(filter)
+			_filter(std::move(filter))
 		{
 		}
 
@@ -218,7 +218,7 @@ namespace forward
 	private:
 
 		Enumerator _enumerator;
-		const Filter& _filter;
+		Filter _filter;
 	};
 
 	#pragma endregion

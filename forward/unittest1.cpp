@@ -108,5 +108,42 @@ namespace forward
 			// We should have a single copy, but the initial collection always intact
 			assert(v[0] == "cat");
 		}
+
+		// Tests of the various implications of storing lambdas 
+		// by ref, pointer (so that default-constructible), copied or moved.
+
+		TEST_METHOD(LambdaReuse1)
+		{
+			using namespace forward;
+			std::vector<std::string> v{ "cat", "bunny", "doggy", "horsey" };
+
+			auto sizes = from(v)
+				>> where([](const auto& s) { return s[0] != 'c'; })
+				>> select([](const auto& s) { return s.size(); });
+
+			auto copy1 = to_vector(sizes);
+			auto copy2 = to_vector(sizes);
+
+			assert(copy1[0] == copy2[0] && copy2[0] == 5);
+			assert(copy1[1] == copy2[1] && copy2[1] == 5);
+			assert(copy1[2] == copy2[2] && copy2[2] == 6);
+		}
+
+		TEST_METHOD(LambdaReuse2)
+		{
+			using namespace forward;
+			std::vector<std::string> v{ "cat", "bunny", "doggy", "horsey" };
+
+			auto filter = [](const std::string& s) { return s[0] != 'c'; };
+			auto mapper = [](const std::string& s) { return s.size(); };
+
+			// Note that the lambdas are moved and probably voided by the expression
+			// construction therefore not usable afterwards. That's our assumption.
+			auto sizes = from(v) >> where(filter) >> select(mapper) >> to_vector<size_t>();
+
+			assert(sizes[0] == 5);
+			assert(sizes[1] == 5);
+			assert(sizes[2] == 6);
+		}
 	};
 }
