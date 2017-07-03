@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 
-#include "forward-basics.h"
+#include "forward.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -144,6 +144,32 @@ namespace forward
             assert(sizes[0] == 5);
             assert(sizes[1] == 5);
             assert(sizes[2] == 6);
+        }
+
+
+        TEST_METHOD(TestToSet1)
+        {
+            using namespace forward;
+            {
+                std::vector<std::string> v{ "cat", "bunny", "doggy", "horsey" };
+
+                auto sizes = from(v)
+                    >> select([](const auto& s) { return s.size(); })
+                    >> to_set<size_t>();
+                auto copy = from(sizes) >> to_vector<size_t>();
+
+                assert(sizes.size() == 3);
+            }
+            {
+                std::vector<std::string> v{ "cat", "bunny", "doggy", "horsey" };
+
+                auto sizes = from(v)
+                    >> select([](const auto& s) { return s.size(); })
+                    >> distinct<size_t>()
+                    >> to_vector<size_t>();
+
+                assert(sizes.size() == 3);
+            }
         }
     };
 }

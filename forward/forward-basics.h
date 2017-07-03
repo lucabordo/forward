@@ -7,6 +7,15 @@
 
 namespace forward
 {
+    // CONTAINS
+    // TODO:
+
+    // TODO
+    // take, skip, single,
+    // sum_from, count, is_empty
+    // forall, exists
+    // zip, unzip, ways to enumerable on pairs/triples
+
 #pragma region Nullable objects, represented by a tuple<bool, T>
 
     template <typename T>
@@ -465,19 +474,4 @@ namespace forward
     }
 
 #pragma endregion
-
-    // TODO
-    // range 
-    // take, skip, 
-    // single,
-    // is_empty, 
-    // sum_from, count
-    // zip, unzip? 
-
-    // revert
-
-    // with additional includes
-    // orderby
-    // distinct
-    // shuffle
 }
