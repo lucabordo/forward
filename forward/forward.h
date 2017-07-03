@@ -75,12 +75,12 @@ namespace forward
         template <typename Enumerable>
         auto apply(const Enumerable& enumerable) const
         {
-            return from(to_set(enumerable));
+            return from_moved(to_set(enumerable));
         }
     };
 
     template <typename Enumerable, typename T>
-    auto operator >> (const Enumerable& enumerable, const Distinct<T>& fold)
+    auto operator >> (const Enumerable& enumerable, Distinct<T> fold)
     {
         return fold.apply(enumerable);
     }

@@ -298,6 +298,31 @@ namespace forward
     };
 
 
+    template <typename Iteratable>
+    class EnumerableFromIteratableMoved
+    {
+    public:
+
+        static const bool is_enumerable = true;
+        using iterator = typename Iteratable::const_iterator;
+        using enumerator = EnumeratorFromIterator<iterator>;
+
+        EnumerableFromIteratableMoved(Iteratable iteratable) :
+            _iteratable(std::move(iteratable))
+        {
+        }
+
+        enumerator get_enumerator() const
+        {
+            return enumerator(_iteratable.begin(), _iteratable.end());
+        }
+
+    private:
+
+        Iteratable _iteratable;
+    };
+
+
     template <typename Enumerable, typename Filter>
     class WhereEnumerable
     {
@@ -357,6 +382,12 @@ namespace forward
     EnumerableFromIteratableRef<Iteratable> from(const Iteratable& iteratable)
     {
         return EnumerableFromIteratableRef<Iteratable>(iteratable);
+    }
+
+    template <typename Iteratable>
+    EnumerableFromIteratableMoved<Iteratable> from_moved(Iteratable iteratable)
+    {
+        return EnumerableFromIteratableMoved<Iteratable>(std::move(iteratable));
     }
 
     template <typename Number>
