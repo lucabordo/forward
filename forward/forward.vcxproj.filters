@@ -12,7 +12,7 @@
     <ClInclude Include="targetver.h">
       <Filter>Test</Filter>
     </ClInclude>
-    <ClInclude Include="forward.h" />
+    <ClInclude Include="forward-basics.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
