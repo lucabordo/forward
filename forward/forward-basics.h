@@ -8,13 +8,15 @@
 namespace forward
 {
     // CONTAINS
-    // TODO:
-
+    // select, from, where, range
+    // to_vector, sum_from
+    //
     // TODO
     // take, skip, single,
-    // sum_from, count, is_empty
+    // count, is_empty
     // forall, exists
-    // zip, unzip, ways to enumerable on pairs/triples
+    // zip, unzip
+    // ways to enumerable on pairs/triples
 
 #pragma region Nullable objects, represented by a tuple<bool, T>
 
@@ -502,6 +504,54 @@ namespace forward
     ToVector<T> to_vector()
     {
         return ToVector<T>();
+    }
+
+
+    template <typename Enumerable, typename T>
+    auto sum_from(const Enumerable& enumerable, T zero)
+    {
+        static_assert(Enumerable::is_enumerable, "Oops.");
+        T result = std::move(zero);
+
+        for (auto enumerator = enumerable.get_enumerator();;)
+        {
+            auto&& next = enumerator.next();
+            if (!has_more(next))
+                return result;
+            result = result + get_value_by_ref(next);
+        }
+    }
+
+    template <typename T>
+    class SumFrom
+    {
+    public:
+
+        SumFrom(T zero) :
+            _zero(std::move(zero))
+        {}
+
+        template <typename Enumerable>
+        auto apply(const Enumerable& enumerable) const
+        {
+            return sum_from(enumerable, _zero);
+        }
+
+    private:
+
+        T _zero;
+    };
+
+    template <typename Enumerable, typename T>
+    T operator >> (const Enumerable& enumerable, const SumFrom<T>& fold)
+    {
+        return fold.apply(enumerable);
+    }
+
+    template <typename T>
+    SumFrom<T> sum_from(T zero)
+    {
+        return SumFrom<T>(std::move(zero));
     }
 
 #pragma endregion

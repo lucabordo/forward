@@ -109,6 +109,13 @@ namespace forward
             assert(v[0] == "cat");
         }
 
+        TEST_METHOD(Sum1)
+        {
+            std::vector<int> v{1, 2, 3};
+            auto s = from(v)
+                >> sum_from(0);
+        }
+
         // Tests of the various implications of storing lambdas 
         // by ref, pointer (so that default-constructible), copied or moved.
 

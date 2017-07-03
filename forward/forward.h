@@ -11,9 +11,9 @@ namespace forward
 {
     // CONTAINS:
     // to_unordered_set, distinct
+    // to_ordered_vector, orderby
     // 
     // TODO:
-    // to_ordered_vector, orderby
     // revert
     //
     // permutate_randomly
