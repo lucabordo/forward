@@ -1,414 +1,179 @@
 #pragma once
 
-#include <memory>
-#include <functional>
-#include <cassert>
-#include <vector>
+#include "forward-basics.h"
+
+#include <unordered_set>
+#include <unordered_map>
+#include <algorithm>
+#include <random>
 
 namespace forward
 {
-	#pragma region Nullable objects, represented by a tuple<bool, T>
-
-	template <typename T>
-	bool has_more(const T& current)
-	{
-		return std::get<0>(current);
-	}
-
-	template <typename T>
-	const auto& peek_value(const T& current)
-	{
-		return std::get<1>(current);
-	}
-
-	template <typename T>
-	auto move_value(T& current)
-	{
-		return std::move(std::get<1>(current));
-	}
-
-	template <typename ReturnType>
-	auto yield_break()
-	{
-		using U = std::remove_reference<ReturnType>::type;
-		return std::make_tuple(false, U{});
-	}
-
-	template <typename ReturnType>
-	auto yield_return(ReturnType&& current)
-	{
-		return std::make_tuple(true, std::move(current));
-	}
-
-	#pragma endregion
-
-	#pragma region Enumerators
-
-	// Enumerators are conceptually as follows. 
-	// Enumerators are moved within more complex enumerators. They should be lightweight objects.
-	// 
-	/*
-
-	template <typename Return_type> // Not the actual paramaterization. ReturnType needs to be default constructible
-  	struct AbstractEnumerator
-	{
-		// Returns (true, next calculated value),
-		// Or, if no next value exists: (false, default_coonstructor())
-		std::tuple<bool, Return_type> next();
-	};
-	
-	*/
-
-
-	// An enumerator based on a pair of STL-style iterators.
-	// Implements:
-	//
-	// for (auto it = begin(); it != end(); ++it)
-	// {
-	//     yield return *it;
-	// }
-	//
-	template <typename Iterator>
-	class EnumeratorFromIterator
-	{
-	public:
-
-		EnumeratorFromIterator(Iterator begin, Iterator end) :
-			_current(std::move(begin)),
-			_end(std::move(end))
-		{
-		}
-
-		auto next()
-		{
-			if (_current == _end)
-			{
-				return yield_break<decltype(*_current)>();
-			}
-			else
-			{
-				auto result = yield_return(*_current);
-				++_current;
-				return std::move(result);
-			}
-		}
-
-	private:
-
-		Iterator _current;
-		Iterator _end; // const, but the Iterator might be moved
-	};
-
-
-	// An enumerator that applies a tranform to all elements of an underlying enumerator.
-	// The function is assumed to be stateless, deterministic, and is only const-referred to.
-	// Implements:
-	//
-	//    for (; en.has_value(); en.forward())
-	//    {
-	//        yield return map(en.get_value());
-	//    }
-	//
-	template <typename Enumerator, typename Transform>
-	class SelectEnumerator
-	{
-	public:
-
-		SelectEnumerator(Enumerator enumerator, const Transform& transform) :
-			_enumerator(std::move(enumerator)),
-			_transform(transform)
-		{
-		}
-
-		auto next()
-		{
-			auto underlying = _enumerator.next();
-			using T = decltype(_transform(move_value(underlying)));
-
-			return has_more(underlying)
-				? yield_return(_transform(move_value(underlying)))
-				: yield_break<T>();
-		}
-
-	private:
-
-		Enumerator _enumerator;
-		const Transform& _transform;
-	};
-
-
-	// An enumerator that only returns the objects from an underlying enumerator that pass a certain test, or filter.
-	// The function is assumed to be stateless, deterministic, and is only const-referred to.
-	// Implements:
-	//
-	//    for (; en.has_value(); en.forward())
-    //    {
-    //        auto current = en.get_value();
-	//        bool valid = filter(current);
-	//        if (valid)
-    //           yield return std::move(current);
-	//    }
-	//
-	template <typename Enumerator, typename Filter>
-	class WhereEnumerator
-	{
-	public:
-
-		static const bool is_enumerator = true;
-
-		WhereEnumerator(Enumerator enumerator, const Filter& filter) :
-			_enumerator(std::move(enumerator)),
-			_filter(filter)
-		{
-		}
-
-		auto next()
-		{
-			for (;;)
-			{
-				auto current = _enumerator.next();
-				using T = decltype(move_value(current));
-
-				if (!has_more(current))
-					return yield_break<T>();
-
-				if (_filter(peek_value(current)))
-					return yield_return(move_value(current));
-			}
-		}
-
-	private:
-
-		Enumerator _enumerator;
-		const Filter& _filter;
-	};
-
-	#pragma endregion
-
-	#pragma region Enumerable
-
-	// Conceptually, enumerables are:
-	/*
-
-	struct Enumerable 
-	{
-		static const bool is_enumerable = true;
-		using enumerator = AbstractEnumerator;
-
-		// Produce an enumerator over this content
-		enumerator get_enumerator() const;
-	};
-	
-	*/
-
-
-	template <typename Iteratable>
-	class EnumerableFromIteratableRef
-	{
-	public:
-
-		static const bool is_enumerable = true;
-		using iterator = typename Iteratable::const_iterator;
-		using enumerator = EnumeratorFromIterator<iterator>;
-
-		EnumerableFromIteratableRef(const Iteratable& iteratable) :
-			_iteratable(iteratable)
-		{
-		}
-
-		enumerator get_enumerator() const
-		{
-			return enumerator(_iteratable.begin(), _iteratable.end());
-		}
-
-	private:
-
-		const Iteratable& _iteratable;
-	};
-
-
-
-	template <typename Enumerable, typename Filter>
-	class WhereEnumerable
-	{
-	public:
-
-		static const bool is_enumerable = true;
-		using enumerator = WhereEnumerator<typename Enumerable::enumerator, Filter>;
-
-		WhereEnumerable(const Enumerable& enumerable, const Filter& filter) :
-			_enumerable(enumerable),
-			_filter(std::move(filter))
-		{
-		}
-
-		enumerator get_enumerator() const
-		{
-			return enumerator(_enumerable.get_enumerator(), _filter);
-		}
-
-	private:
-
-		const Enumerable& _enumerable;
-		const Filter& _filter;
-	};
-
-
-	template <typename Enumerable, typename Transform>
-	class SelectEnumerable
-	{
-	public:
-
-		static const bool is_enumerable = true;
-		using enumerator = SelectEnumerator<typename Enumerable::enumerator, Transform>;
-
-		SelectEnumerable(const Enumerable& enumerable, const Transform& filter) :
-			_enumerable(enumerable),
-			_transform(std::move(filter))
-		{
-		}
-
-		enumerator get_enumerator() const
-		{
-			return enumerator(_enumerable.get_enumerator(), _transform);
-		}
-
-	private:
-
-		const Enumerable& _enumerable;
-		const Transform& _transform;
-	};
-
-	#pragma endregion
-
-	#pragma region Syntax for from... where... select
-
-	template <typename Iteratable>
-	EnumerableFromIteratableRef<Iteratable> from(const Iteratable& iteratable)
-	{
-		return EnumerableFromIteratableRef<Iteratable>(iteratable);
-	}
-
-
-	// Allow right hand side composition for where
-	template <typename Filter>
-	class WhereRightHandSide
-	{
-	private:
-		const Filter& _filter;
-	public:
-		WhereRightHandSide(const Filter& filter) : _filter(filter) {}
-
-		template <typename Enumerable>
-		WhereEnumerable<Enumerable, Filter> apply(const Enumerable& enumerable) const
-		{
-			return WhereEnumerable<Enumerable, Filter>(enumerable, _filter);
-		}
-	};
-
-	template <typename Filter>
-	WhereRightHandSide<Filter> where(const Filter& filter) 
-	{
-		return WhereRightHandSide<Filter>(filter);
-	}
-
-	template <typename Enumerable, typename Filter>
-	WhereEnumerable<Enumerable, Filter> operator >> (const Enumerable& enumerable, const WhereRightHandSide<Filter>& whereRightHandSide)
-	{
-		return whereRightHandSide.apply(enumerable);
-	}
-
-
-	// Allow right hand side composition for select
-	template <typename Transform>
-	class SelectRightHandSide
-	{
-	private:
-		const Transform& _map;
-	public:
-		SelectRightHandSide(const Transform& map) : _map(map) {}
-
-		template <typename Enumerable>
-		SelectEnumerable<Enumerable, Transform> apply(const Enumerable& enumerable) const
-		{
-			return SelectEnumerable<Enumerable, Transform>(enumerable, _map);
-		}
-	};
-
-	template <typename Transform>
-	SelectRightHandSide<Transform> select(const Transform& map)
-	{
-		return SelectRightHandSide<Transform>(map);
-	}
-
-	template <typename Enumerable, typename Transform>
-	SelectEnumerable<Enumerable, Transform> operator >> (const Enumerable& enumerable, const SelectRightHandSide<Transform>& selectRightHandSide)
-	{
-		return selectRightHandSide.apply(enumerable);
-	}
-
-	#pragma endregion
-
-	#pragma region Accumulator functions
-
-	template <typename Enumerable>
-	auto to_vector(const Enumerable& enumerable)
-	{
-		static_assert(Enumerable::is_enumerable, "Oops.");
-		auto enumerator = enumerable.get_enumerator();
-		using T = std::remove_reference<decltype(std::get<1>(enumerator.next()))>::type;
-		std::vector<T> result;
-
-		for (;;)
-		{
-			auto next = enumerator.next();
-			if (!has_more(next))
-				break;
-			result.push_back(move_value(next));
-		}
-
-		return result;
-	}
-
-	template <typename T>
-	class ToVector
-	{
-	public:
-
-		template <typename Enumerable>
-		std::vector<T> apply(const Enumerable& enumerable) const
-		{
-			return to_vector(enumerable);
-		}
-	};
-
-
-	template <typename Enumerable, typename T>
-	std::vector<T> operator >> (const Enumerable& enumerable, const ToVector<T>& fold)
-	{
-		return fold.apply(enumerable);
-	}
-
-	template <typename T>
-	ToVector<T> to_vector()
-	{
-		return ToVector<T>();
-	}
-
-	#pragma endregion
-
-    // TODO
-	// range 
-	// take, skip, 
-	// single,
-	// is_empty, 
-	// sum_from, count
-	// zip, unzip? 
-
-	// revert
-
-	// with additional includes
-	// orderby
-	// distinct
-	// shuffle
+    // CONTAINS:
+    // to_unordered_set, distinct
+    // to_ordered_vector, orderby
+    // 
+    // TODO:
+    // revert
+    //
+    // permutate_randomly
+    // lines of a text file, files of a directory
+
+#pragma region ToSet, Distinct
+
+    template <typename Enumerable>
+    auto to_set(const Enumerable& enumerable)
+    {
+        static_assert(Enumerable::is_enumerable, "Oops.");
+        auto enumerator = enumerable.get_enumerator();
+
+        using actual_type = decltype(std::get<1>(enumerator.next()));
+        using stored_type = std::remove_reference<actual_type>::type;
+
+        std::unordered_set<stored_type> result;
+
+        for (;;)
+        {
+            auto&& next = enumerator.next();
+            if (!has_more(next))
+                break;
+            result.insert(std::forward<actual_type>(std::get<1>(next)));
+        }
+
+        return result;
+    }
+
+    template <typename T>
+    class ToSet
+    {
+    public:
+
+        template <typename Enumerable>
+        std::unordered_set<T> apply(const Enumerable& enumerable) const
+        {
+            return to_set(enumerable);
+        }
+    };
+
+    template <typename Enumerable, typename T>
+    std::unordered_set<T> operator >> (const Enumerable& enumerable, const ToSet<T>& fold)
+    {
+        return fold.apply(enumerable);
+    }
+
+    template <typename T>
+    ToSet<T> to_set()
+    {
+        return ToSet<T>();
+    }
+
+
+    template <typename T>
+    class Distinct
+    {
+    public:
+
+        template <typename Enumerable>
+        auto apply(const Enumerable& enumerable) const
+        {
+            return from_moved(to_set(enumerable));
+        }
+    };
+
+    template <typename Enumerable, typename T>
+    auto operator >> (const Enumerable& enumerable, Distinct<T> fold)
+    {
+        return fold.apply(enumerable);
+    }
+
+    template <typename T>
+    auto distinct()
+    {
+        return Distinct<T>();
+    }
+
+#pragma endregion
+
+#pragma region Order
+
+    template <typename Enumerable, typename Evaluation>
+    auto to_vector_ordered_by(const Enumerable& enumerable, const Evaluation& evaluation)
+    {
+        static_assert(Enumerable::is_enumerable, "Oops.");
+        auto result = to_vector(enumerable);
+
+        std::sort(result.begin(), result.end(), [&](const auto& a, const auto& b)
+        {
+            return evaluation(a) < evaluation(b);
+        });
+
+        return result;
+    }
+
+    template <typename T, typename Evaluation>
+    class ToVectorOrderedBy
+    {
+    public:
+
+        ToVectorOrderedBy(Evaluation evaluation):
+            _evaluation(evaluation) // copy
+        {}
+
+        template <typename Enumerable>
+        auto apply(const Enumerable& enumerable) const
+        {
+            return to_vector_ordered_by(enumerable, _evaluation);
+        }
+
+    private:
+
+        Evaluation _evaluation;
+    };
+
+    template <typename Enumerable, typename T, typename Evaluation>
+    auto operator >> (const Enumerable& enumerable, const ToVectorOrderedBy<T, Evaluation>& fold)
+    {
+        return fold.apply(enumerable);
+    }
+
+    template <typename T, typename Evaluation>
+    ToVectorOrderedBy<T, Evaluation> to_vector_ordered_by(Evaluation eval)
+    {
+        return ToVectorOrderedBy<T, Evaluation>(std::move(eval));
+    }
+
+
+    template <typename T, typename Evaluation>
+    class OrderedBy
+    {
+    public:      
+        
+        OrderedBy(Evaluation evaluation) :
+            _evaluation(std::move(evaluation))
+        {}
+
+        template <typename Enumerable>
+        auto apply(const Enumerable& enumerable) const
+        {
+            return from_moved(to_vector_ordered_by(enumerable, _evaluation));
+        }
+
+    private:
+
+        Evaluation _evaluation;
+    };
+
+    template <typename Enumerable, typename T, typename Evaluation>
+    auto operator >> (const Enumerable& enumerable, OrderedBy<T, Evaluation> fold)
+    {
+        return fold.apply(enumerable);
+    }
+
+    template <typename T, typename Evaluation>
+    auto order_by(Evaluation evaluation)
+    {
+        return OrderedBy<T, Evaluation>(std::move(evaluation));
+    }
+
+#pragma endregion
 }
